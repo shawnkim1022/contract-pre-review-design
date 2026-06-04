@@ -1,4 +1,65 @@
+<a id="english"></a>
+# Contract Pre-Review Engine — Architecture & Design Docs
+
+**English** | [한국어](#korean)
+
+> Design documentation for a *pre-review* engine that **deterministically screens
+> risky clauses** in NDA / MSA / license contracts and hands a structured report to
+> a human lawyer.
+>
+> ⚠️ This repository is **design / research documentation**. It is not a product or a
+> service, and it is **not legal advice.**
+
+## What it is
+
+A v0.1 architecture specification for a *deterministic (rule-first)* pipeline that
+breaks a contract down clause by clause, scores each clause's risk (severity) against
+a company playbook and ruleset, diagnoses missing clauses, and compiles **the questions
+a lawyer needs to answer** into a hand-off report.
+
+Key design decision: **the LLM is kept out of the decision path.** Clause
+classification, severity scoring, and missing-clause diagnosis are all rule-based and
+anchored to evidence (the source text). The LLM — if used at all — plays only a
+supporting role: explaining, in natural language, the decisions the rules have already made.
+
+## What it is not
+
+- It is **not** legal advice.
+- It does **not** replace a lawyer.
+- It is **not** a "safe to sign" approval tool.
+- It is **not** a guarantee of enforceability.
+
+## Design principles
+
+- **Decision, not generation** — rules are the source of truth; the LLM does not judge.
+- **Evidence-anchored** — every finding links back to the source text of the clause.
+- **Human makes the final call** — the output is a lawyer hand-off; no automated decisions, no automated signing.
+- **Auditable** — every decision is logged and reproducible against a versioned ruleset.
+
+## Documents
+
+- [`docs/contract-pre-review-engine-v0.1.md`](docs/contract-pre-review-engine-v0.1.md)
+  — the complete v0.1 architecture specification
+  (Product Definition → Architecture → Clause Taxonomy → Severity Framework →
+  Company Playbook → Validation Layer → Korean Law Verification Layer →
+  Report / Lawyer Handoff Format → MVP Plan → Test Cases → Non-Goals)
+
+## ⚠️ Disclaimer
+
+This is a personal design / research artifact. It is **not legal advice**, and it does
+not replace review by a qualified lawyer or perform any legal service. Always have
+actual contract review done by a lawyer.
+
+## Author
+
+김수환 (Suhwan Kim) · shawnkim1022@gmail.com
+
+---
+
+<a id="korean"></a>
 # Contract Pre-Review Engine — 아키텍처 & 설계 문서
+
+[English](#english) | **한국어**
 
 > NDA / MSA / license 계약서의 **위험 조항을 결정론적으로 사전 선별**해
 > 변호사(사람)에게 구조화된 보고서로 넘기는 *사전 검토(pre-review)* 엔진의 설계 문서입니다.
