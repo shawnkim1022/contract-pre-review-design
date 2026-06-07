@@ -1,108 +1,61 @@
-<a id="english"></a>
-# Contract Pre-Review Engine — Architecture & Design Docs
+# Contract Pre-Review Engine
 
-**English** | [한국어](#korean)
+A deterministic NDA / contract pre-review engine for people who sign contracts they can't fully vet: solo founders and small teams with no in-house counsel, and the lawyers doing first-pass triage for them. A contract goes in, a prioritized list of what to question comes out. No external LLM calls.
 
-> Design documentation for a *pre-review* engine that **deterministically screens
-> risky clauses** in NDA / MSA / license contracts and hands a structured report to
-> a human lawyer.
+> Public overview and design docs. The source lives in a separate private repo, and full code walkthroughs happen in interviews.
 >
-> ⚠️ This repository is **design / research documentation**. It is not a product or a
-> service, and it is **not legal advice.**
+> This is not a lawyer, and its output is not legal advice. It does not decide whether a contract is valid or enforceable, and it does not replace attorney review. It points a qualified lawyer at the clauses worth a second look.
 
-## What it is
+## The problem
 
-A v0.1 architecture specification for a *deterministic (rule-first)* pipeline that
-breaks a contract down clause by clause, scores each clause's risk (severity) against
-a company playbook and ruleset, diagnoses missing clauses, and compiles **the questions
-a lawyer needs to answer** into a hand-off report.
+Reading an NDA is not the hard part. Knowing which clauses actually matter, and never being confidently wrong about it, is. In law a hallucinated "this looks fine" is the worst output a tool can produce.
 
-Key design decision: **the LLM is kept out of the decision path.** Clause
-classification, severity scoring, and missing-clause diagnosis are all rule-based and
-anchored to evidence (the source text). The LLM — if used at all — plays only a
-supporting role: explaining, in natural language, the decisions the rules have already made.
+A second problem sits underneath that one. The output has to be auditable. A lawyer who can't see why a clause was flagged, or who gets a different answer on a re-run, won't trust the tool twice. So every flag has to trace to an exact span of the contract and a named rule, and the same contract has to produce the same result every time. The whole system is built around one question: how do you surface what matters without ever pretending to be a lawyer?
 
-## What it is not
+## Ontology
 
-- It is **not** legal advice.
-- It does **not** replace a lawyer.
-- It is **not** a "safe to sign" approval tool.
-- It is **not** a guarantee of enforceability.
+Clauses resolve onto an explicit domain model, not free text. The objects are a Clause (carrying its exact character offsets in the source), a Finding, an escalation Rule, and a Party (ten roles, including the unknown and both-parties cases real contracts force on you). They link the way you would expect. A Finding points at the Clause it came from. A Clause points at its parent clause for document structure. An original clause links to its redline counterpart for version diffs. A Finding traces back through the detector that fired to the Rule that governs it.
 
-## Design principles
+Under all of it sits the part that keeps the system honest: a governed risk taxonomy of 73 entries across 15 categories, guarded against duplicate IDs, that every detector has to classify into. Training-data use without opt-in, source-code access, residual knowledge, broad affiliate or subcontractor disclosure, perpetual confidentiality, liquidated-damages multipliers, unlimited or consequential liability, counterparty-friendly jurisdiction, protections lost on downstream agreements, and so on. The taxonomy is the closed vocabulary. Detectors classify into it, rules reason over it, reports render from it, and nothing reaches a reader that isn't tied to a taxonomy entry plus the clause span that triggered it.
 
-- **Decision, not generation** — rules are the source of truth; the LLM does not judge.
-- **Evidence-anchored** — every finding links back to the source text of the clause.
-- **Human makes the final call** — the output is a lawyer hand-off; no automated decisions, no automated signing.
-- **Auditable** — every decision is logged and reproducible against a versioned ruleset.
+This typed layer is what makes every downstream step checkable.
 
-## Documents
+## Data
 
-- [`docs/contract-pre-review-engine-v0.1.md`](docs/contract-pre-review-engine-v0.1.md)
-  — the complete v0.1 architecture specification
-  (Product Definition → Architecture → Clause Taxonomy → Severity Framework →
-  Company Playbook → Validation Layer → Korean Law Verification Layer →
-  Report / Lawyer Handoff Format → MVP Plan → Test Cases → Non-Goals)
+The domain data is the risk taxonomy plus the Korean and English clause lexicons and slot patterns (durations, amounts, multipliers, notice periods, liability caps) that map real phrasings onto canonical findings. Input is a contract file (TXT, MD, DOCX, PDF) read locally and normalized deterministically, so segmentation stays clean: control characters and page numbers come out, wrapped lines get joined conservatively, and article markers like 제N조 or Article N are preserved.
 
-## ⚠️ Disclaimer
+The evaluation data is a synthetic corpus of 84 labeled items across 11 fixtures, stratified by difficulty (one easy, two medium, seven hard, one expert), each carrying a ground-truth target. Real contracts never enter version control. Answer keys are metadata only, with zero raw clause text, and a validator rejects raw-text fields and PII (email, phone, absolute paths) before evaluation runs. The evaluator refuses to print clause bodies, and when real data is absent it claims no result rather than degrading silently.
 
-This is a personal design / research artifact. It is **not legal advice**, and it does
-not replace review by a qualified lawyer or perform any legal service. Always have
-actual contract review done by a lawyer.
+## Logic
 
-## Author
+Normalization, then hard pattern detectors, then a structural-asymmetry scorer, then escalation. The hard detectors (regex, keyword, and slot extraction at the clause and document level) recognize known risky shapes and map them into the taxonomy. The scorer is a second pass for one-sidedness: it sums weighted signals and surfaces a clause for review once it crosses a fixed threshold of 25 points, and it stays quiet when a hard detector already fired. Behind both sits a safety net that flags clauses no detector matched but that still look like they need a person: an unknown category, numbers with no matching rule, dense multi-condition language that buries an obligation. The engine never treats an unrecognized clause as safe.
 
-김수환 (Suhwan Kim) · shawnkim1022@gmail.com
+All of it is deterministic. Zero LLM calls, zero random calls on the runtime path. Same contract, same findings, same IDs, same scores, every time. That choice is written down as an accepted architecture decision with five protected invariants and a six-condition gate that would have to be met, and re-decided with a lawyer in the loop, before any model could touch the path a reader sees. A reasoning model can still help off the path, writing adversarial test fixtures or proposing candidate rules, but its output has to become a deterministic rule or a frozen, human-reviewed template before it reaches anyone.
 
----
+## Action
 
-<a id="korean"></a>
-# Contract Pre-Review Engine — 아키텍처 & 설계 문서
+State-changing decisions are explicit and bounded. Every finding runs through an absolute-rules engine of 53 rules that assigns one of three outcomes: hard_reject, mandatory_lawyer_review, or business_confirm_required. Twenty-three of those rules are non-overridable, all of them on the lawyer-review tier. The other thirty can be overridden, and the type model carries an audit trail (who overrode it, why, whether a lawyer approved) for when persistence gets built, which is out of scope for v0.1. The escalation is the action. It tells a person what to do next.
 
-[English](#english) | **한국어**
+What the engine will not do is decide. It never emits a "safe", an "approve", or a "sign it". It produces flags, the source evidence behind them, and a routing decision toward a person. A run writes a plain-Korean explanation for a business reader, a structured handoff for a lawyer, and JSONL records (findings, fingerprints, run history) so a person can diff results between detector changes. The refusal to render a verdict is deliberate. It keeps the tool on the right side of Korean Attorney-at-Law Act Article 109, where unauthorized practice of law is a real liability.
 
-> NDA / MSA / license 계약서의 **위험 조항을 결정론적으로 사전 선별**해
-> 변호사(사람)에게 구조화된 보고서로 넘기는 *사전 검토(pre-review)* 엔진의 설계 문서입니다.
->
-> ⚠️ 본 저장소는 **설계·연구 문서**입니다. 제품도 서비스도 아니며, **법률 자문이 아닙니다.**
+## How I know it works
 
-## 무엇인가
+The part worth showing is the layer that measures the engine. Findings are scored against the 84 labeled items, graded by which detector layer actually fired (specific, structural, generic, or missed) rather than by a hint the answer key declared, so the engine cannot grade itself generously. any-hit recall and specific recall are reported separately. False positives are counted per layer. Every fixture carries negative controls (clauses that must not fire), and one fixture exists only to catch over-flagging. Because the runtime is deterministic, a re-run diff is zero by construction, and a local check spins up two throwaway worktrees and fails the change on any recall regression or any new false positive.
 
-계약서를 조항 단위로 분해해, 회사 playbook과 룰에 따라 위험도(severity)를 매기고,
-누락 조항을 진단하고, **변호사가 답해야 할 질문**을 정리해 handoff 보고서로 만드는
-*결정론(rule-first)* 파이프라인의 v0.1 아키텍처 명세입니다.
+On that synthetic benchmark the engine reaches 89.3% any-hit recall (75 of 84) and 78.6% specific recall (66 of 84), with 4 false positives. Read those as pattern-recall against labels I wrote myself, not as real-world accuracy. There are no lawyer-validated labels yet. Twice, the measurement layer changed my mind about what was actually broken, which is the reason to build it.
 
-핵심 설계 결정: **LLM을 판단 경로에서 배제**합니다. 조항 분류 · severity · 누락 진단은
-전부 룰 기반이고 근거(원문)에 고정됩니다. LLM은 (쓰더라도) 룰이 내린 결정을
-자연어로 설명하는 보조 역할만 합니다.
+## Honest limitations
 
-## 무엇이 아닌가
+Pre-deployment and solo-built. Every number here comes from synthetic stress tests. No real-contract run has happened yet, and the difficulty mix and clause coverage are hypotheses to be re-weighted against real use. Detector breadth is partial, the Korean-law citation set is deliberately narrow, and there is no CI; the test suites and the regression check are gates I run by hand. The thing that would move it forward most is lawyer-validated labels. Without them, neither real accuracy nor a consistent material miss can be established.
 
-- 법률 자문이 **아닙니다**.
-- 변호사를 **대체하지 않습니다**.
-- "서명해도 안전" 승인 도구가 **아닙니다**.
-- 집행 가능성(enforceability) 보증이 **아닙니다**.
+## Design docs
 
-## 설계 원칙
+The full v0.1 architecture specification is in [`docs/contract-pre-review-engine-v0.1.md`](docs/contract-pre-review-engine-v0.1.md): product definition, clause taxonomy, severity framework, company playbook, validation layer, Korean-law verification layer, lawyer-handoff format, MVP plan, test cases, and non-goals.
 
-- **생성이 아니라 결정** — 룰이 source of truth, LLM은 판단하지 않음
-- **근거 고정(evidence-anchored)** — 모든 finding은 조항 원문에 링크
-- **사람이 최종 판단** — 출력은 변호사 hand-off, 자동 결정 · 자동 서명 없음
-- **감사 가능(auditable)** — 모든 결정은 버전된 ruleset에 대해 로그·재현 가능
+## License and use
 
-## 문서
+Design and architecture docs, shared for review. The source is private and proprietary. Nothing here is for distribution as legal advice or as a substitute for counsel, and the engine's output is decision-support for a qualified lawyer to confirm, never an autonomous decision.
 
-- [`docs/contract-pre-review-engine-v0.1.md`](docs/contract-pre-review-engine-v0.1.md)
-  — v0.1 아키텍처 전체 명세
-  (Product Definition → Architecture → Clause Taxonomy → Severity Framework →
-  Company Playbook → Validation Layer → Korean Law Verification Layer →
-  Report / Lawyer Handoff Format → MVP Plan → Test Cases → Non-Goals)
+## Contact
 
-## ⚠️ 면책 (Disclaimer)
-
-개인 설계·연구 산출물입니다. **법률 자문이 아니며**, 자격 있는 변호사의 검토를
-대체하거나 법률 사무를 수행하지 않습니다. 실제 계약 검토는 반드시 변호사에게 받으십시오.
-
-## 작성자
-
-김수환 (Suhwan Kim) · shawnkim1022@gmail.com
+Code walkthroughs and interview scheduling: shawnkim1022@gmail.com
