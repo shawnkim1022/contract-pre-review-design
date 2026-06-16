@@ -1,10 +1,17 @@
 # Contract Pre-Review Engine
 
-A deterministic NDA / contract pre-review engine for people who sign contracts they can't fully vet: solo founders and small teams with no in-house counsel, and the lawyers doing first-pass triage for them. A contract goes in, a prioritized list of what to question comes out. No external LLM calls.
+A deterministic NDA pre-review engine for founders, small teams, and lawyers doing first-pass contract triage.
 
-> Public overview and design docs. The source lives in a separate private repo, and full code walkthroughs happen in interviews.
->
-> This is not a lawyer, and its output is not legal advice. It does not decide whether a contract is valid or enforceable, and it does not replace attorney review. It points a qualified lawyer at the clauses worth a second look.
+A contract goes in; a prioritized list of clauses to review comes out. Each finding is tied to an exact source span, a named rule, and an escalation outcome. No external LLM calls run on the user-facing path.
+
+This is not legal advice and does not decide whether a contract should be signed. It is a decision-support workflow: it helps a qualified reviewer see what to question, why it matters, and where to look in the source text.
+
+## What this demonstrates  
+
+- The tool is scoped as decision support, not legal advice or automated approval.
+- Each finding is tied to a source span, a named rule, and an escalation outcome.
+- The runtime path is deterministic: no external LLM calls, random calls, or model-generated verdicts.
+- Evaluation is explicit: 84 labeled items across 11 fixtures, with issue-specific recall and false positives tracked separately.
 
 ## The problem
 
@@ -36,7 +43,7 @@ All of it is deterministic. Zero LLM calls, zero random calls on the runtime pat
 
 State-changing decisions are explicit and bounded. Every finding runs through an absolute-rules engine of 53 rules that assigns one of three outcomes: hard_reject, mandatory_lawyer_review, or business_confirm_required. Twenty-three of those rules are non-overridable, all of them on the lawyer-review tier. The other thirty can be overridden, and the type model carries an audit trail (who overrode it, why, whether a lawyer approved) for when persistence gets built, which is out of scope for v0.1. The escalation is the action. It tells a person what to do next.
 
-What the engine will not do is decide. It never emits a "safe", an "approve", or a "sign it". It produces flags, the source evidence behind them, and a routing decision toward a person. A run writes a plain-Korean explanation for a business reader, a structured handoff for a lawyer, and JSONL records (findings, fingerprints, run history) so a person can diff results between detector changes. The refusal to render a verdict is deliberate. It keeps the tool on the right side of Korean Attorney-at-Law Act Article 109, where unauthorized practice of law is a real liability.
+What the engine will not do is decide. It never emits a "safe", an "approve", or a "sign it". It produces flags, the source evidence behind them, and a routing decision toward a person. A run writes a plain-Korean explanation for a business reader, a structured handoff for a lawyer, and JSONL records (findings, fingerprints, run history) so a person can diff results between detector changes. The refusal to render a verdict is deliberate. I designed the tool as triage and lawyer-handoff support, not legal advice or automated approval. That boundary matters under Korean Attorney-at-Law Act Article 109, so the engine never emits “safe,” “approve,” or “sign.”
 
 ## How I know it works
 
